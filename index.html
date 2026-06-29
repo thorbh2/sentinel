@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sentinel — On-Chain Fact Verification</title>
+<!-- Structure: CASE-FILE DOSSIER. Stat header band → evidence-log timeline (left) + redacted-document inspector (right). No hero canvas; the data is the interface. -->
+<link rel="stylesheet" href="./styles.css">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/bold/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav">
+    <div class="nav-inner">
+      <div class="brand">
+        <i class="ph-bold ph-magnifying-glass" style="font-size:24px;color:var(--cyan)"></i>
+        Sentinel
+      </div>
+      <div class="nav-links">
+        <a href="#dossier">Dossier</a>
+        <a href="https://docs.genlayer.com/" target="_blank" rel="noopener">GenLayer</a>
+        <span class="live"><span class="d"></span>STUDIONET</span>
+        <span id="walletslot"><button class="btn sm" id="connectBtn">Connect<span class="ic" data-icon="arrowRight"></span></button></span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- masthead band: title + live case stats -->
+  <header class="dossier-head">
+    <div class="dh-left">
+      <span class="eyebrow"><span class="pip"></span> Bonded fact verification</span>
+      <h1 class="disp">The public record,<br>settled by <span>consensus.</span></h1>
+      <p>Assert a claim and stake a bond. A skeptic can bond against it. The contract reads the cited evidence itself, and a validator set must agree what it says. The side that matched reality takes the pot.</p>
+      <button class="btn" id="newClaimBtn">Open a new case <span class="ic" data-icon="plus"></span></button>
+    </div>
+    <div class="dh-stats">
+      <div class="dstat"><div class="v disp" id="stTotal">—</div><div class="l">Cases on record</div></div>
+      <div class="dstat"><div class="v disp" id="stOpen">—</div><div class="l">Open / disputed</div></div>
+      <div class="dstat"><div class="v disp" id="stBonded">—</div><div class="l">GEN bonded</div></div>
+    </div>
+  </header>
+
+  <!-- dossier: timeline + inspector -->
+  <main id="dossier" class="dossier">
+    <aside class="evlog">
+      <div class="evlog-head"><span>Evidence log</span><span class="mono" id="feedMeta">…</span></div>
+      <div class="timeline" id="feed"><div class="empty">Scanning registry…</div></div>
+    </aside>
+    <section class="inspector">
+      <div class="insp-tab"><span class="mono">// case inspector</span><button class="btn ghost sm" id="refreshBtn">Sync</button></div>
+      <div class="insp-body" id="inspect">
+        <div class="ins-empty">
+          <figure class="ins-art">
+            <img src="https://picsum.photos/seed/sentinel-archive/720/420" alt="The evidence archive" loading="lazy" />
+            <span class="ins-scan"></span>
+          </figure>
+          <div class="ins-art-cap">SELECT A CASE FROM THE EVIDENCE LOG TO OPEN ITS FILE.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Sentinel · on-chain fact verification · GenLayer studionet</span>
+    <span class="links"><a href="https://docs.genlayer.com/" target="_blank" rel="noopener">Docs</a><a href="https://docs.genlayer.com/core-concepts/web-data-access" target="_blank" rel="noopener">Web Access</a><a href="https://studio.genlayer.com/" target="_blank" rel="noopener">Studio</a></span>
+    <span id="contractFoot"></span>
+  </footer>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-h"><h3 class="disp" id="drawerTitle">Open a new case</h3><button class="btn ghost sm" id="closeDrawer">Close</button></div>
+  <div class="drawer-b" id="drawerBody"></div>
+</aside>
+
+<div id="log"></div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
