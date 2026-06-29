@@ -1,4 +1,4 @@
-/* SENTINEL — CASE-FILE DOSSIER. Stat header → evidence-log timeline (left) +
+/* SENTINEL - CASE-FILE DOSSIER. Stat header → evidence-log timeline (left) +
    document inspector (right). Calm forensic. Clash Display + Space Grotesk + JetBrains Mono. */
 @import url("https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700&f[]=space-grotesk@400,500,600&f[]=jetbrains-mono@400,500&display=swap");
 
@@ -75,7 +75,7 @@ a{color:var(--cyan);text-decoration:none}
 .bondtag{color:var(--txt2)}
 .timeline .empty{padding:36px 16px;text-align:center;color:var(--dim);font-family:"JetBrains Mono",monospace;font-size:13px}
 
-/* inspector — a document */
+/* inspector - a document */
 .inspector{background:var(--panel);border:1px solid var(--line2);border-radius:16px;overflow:hidden;min-height:60vh;position:relative}
 .inspector::after{content:"";position:absolute;left:0;right:0;top:0;height:2px;pointer-events:none;z-index:3;
   background:linear-gradient(90deg,transparent,var(--cyan),transparent);opacity:.5;animation:scanline 4.5s linear infinite}

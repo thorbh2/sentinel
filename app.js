@@ -83,7 +83,7 @@ function renderInspect(id) {
     ${verdictHtml}
     <div class="bondface">
       <div class="side t"><div class="lab">Asserts True</div><div class="amt disp">${toGen(c.bond)}</div><div class="who">${short(c.asserter)}</div></div>
-      <div class="side f"><div class="lab">Asserts False</div><div class="amt disp">${disputed ? toGen(c.bond) : "—"}</div><div class="who">${disputed ? short(c.challenger) : "open seat"}</div></div>
+      <div class="side f"><div class="lab">Asserts False</div><div class="amt disp">${disputed ? toGen(c.bond) : "-"}</div><div class="who">${disputed ? short(c.challenger) : "open seat"}</div></div>
     </div>
     <div class="specs">
       <div class="spec"><div class="l">Evidence source</div><div class="v"><a href="${esc(c.evidence_url)}" target="_blank" rel="noopener">${esc(c.evidence_url)}</a></div></div>
