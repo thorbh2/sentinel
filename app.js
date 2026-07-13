@@ -2,7 +2,7 @@ import { makeReader, write, connectWallet, activeAccount, balanceOf, short, toGe
   from "./shared/genlayer-lite.js";
 import { icon, setIcons } from "./shared/icons.js";
 
-const CONTRACT = "0xFDF377cB5Fb982B4D3f908FB8D3D9dA7aD529032";
+const CONTRACT = "0xc709086369FB93e47b602a585fd67aF82f4120B4";
 const { read } = makeReader(CONTRACT);
 
 const ASSERTED = 0, DISPUTED = 1, RULED = 2;
@@ -63,8 +63,11 @@ function renderFeed() {
   });
 }
 
-function renderInspect(id) {
+async function renderInspect(id) {
   const c = claims.find((x) => x.id === id); if (!c) return;
+  let rec = {};
+  try { const raw = await read("get_claim_record", [String(id)]); rec = typeof raw === "string" ? JSON.parse(raw) : raw; }
+  catch (_) {}
   const st = Number(c.status), v = Number(c.verdict);
   const disputed = c.challenger && !/^0x0+$/.test(c.challenger);
   let verdictHtml = "";
@@ -74,8 +77,12 @@ function renderInspect(id) {
     verdictHtml = `<div class="verdictbox ${vb}"><div class="big disp">${big}</div><div class="why">${c.rationale ? esc(c.rationale) : "Adjudicated by validator consensus over the live evidence."}</div></div>`;
   }
   let actions = "";
-  if (st === ASSERTED) actions = `<button class="btn amber" id="challengeBtn">Challenge · bond ${toGen(c.bond)} GEN against</button><button class="btn" id="adjBtn">Adjudicate from evidence <span class="ic">${icon("arrowRight")}</span></button>`;
-  else if (st === DISPUTED) actions = `<button class="btn" id="adjBtn">Adjudicate from evidence <span class="ic">${icon("arrowRight")}</span></button>`;
+  if (rec.status === "OPEN") actions = `<button class="btn amber" id="challengeBtn">Challenge · bond ${toGen(c.bond)} GEN against</button><button class="btn" id="closeBtn">Close counter-bonds and mature case</button>`;
+  else if (rec.status === "REVIEWING") actions = `<button class="btn" id="reviewBtn">Adjudicate from evidence <span class="ic">${icon("arrowRight")}</span></button>`;
+  else if (rec.status === "REVIEWED") actions = `<button class="btn" id="windowBtn">Open challenge window</button>`;
+  else if (rec.status === "CHALLENGE_WINDOW") actions = `<label>Challenge</label><textarea id="reviewClaim" placeholder="What did the verdict miss?"></textarea><input id="reviewUrl" placeholder="https://counter-evidence.example"/><button class="btn amber" id="submitChallengeBtn">Submit evidence challenge</button><label>Appeal</label><textarea id="appealReason" placeholder="Reason for appeal"></textarea><input id="appealUrl" placeholder="https://appeal-evidence.example"/><button class="btn" id="appealBtn">File appeal</button><button class="btn" id="settleBtn">Finalize verdict and unlock claims</button>`;
+  else if (rec.status === "APPEALED") actions = `<div class="mono">APPEAL OPEN · payout locked</div>`;
+  else if (rec.status === "RESOLVED") actions = `<button class="btn" id="claimBtn">${rec.outcome === "unclear" ? "Reclaim bond" : "Claim winning bond"}</button>`;
   $("inspect").innerHTML = `<div class="casefile">
     <div class="cf-id">CASE FILE · CASE-${String(id).padStart(3, "0")}</div>
     <div class="cf-stmt disp">${esc(c.statement)}</div>
@@ -88,11 +95,18 @@ function renderInspect(id) {
     <div class="specs">
       <div class="spec"><div class="l">Evidence source</div><div class="v"><a href="${esc(c.evidence_url)}" target="_blank" rel="noopener">${esc(c.evidence_url)}</a></div></div>
       <div class="spec"><div class="l">Pot at stake</div><div class="v">${toGen((BigInt(c.bond) * (disputed ? 2n : 1n)).toString())} GEN</div></div>
+      <div class="spec"><div class="l">Lifecycle</div><div class="v">${esc(rec.status || "legacy")}</div></div>
     </div>
-    ${st !== RULED ? `<div class="actions">${actions}</div>` : `<div class="mono" style="color:var(--dim);font-size:12px">CASE CLOSED · ${c.paid ? "settlement disbursed" : "settled"}</div>`}
+    <div class="actions">${actions}</div>
   </div>`;
-  if (st === ASSERTED) $("challengeBtn").onclick = () => doChallenge(id, c.bond);
-  if (st === ASSERTED || st === DISPUTED) $("adjBtn").onclick = () => doAdjudicate(id);
+  if (rec.status === "OPEN") { $("challengeBtn").onclick = () => doChallenge(id, c.bond); $("closeBtn").onclick = () => doLifecycle("close_staking", [String(id)], "Counter-bonds closed."); }
+  else if (rec.status === "REVIEWING") $("reviewBtn").onclick = () => doLifecycle("review_claim_with_genlayer", [String(id)], "Verdict reviewed.");
+  else if (rec.status === "REVIEWED") $("windowBtn").onclick = () => doLifecycle("open_challenge_window", [String(id)], "Challenge window opened.");
+  else if (rec.status === "CHALLENGE_WINDOW") {
+    $("submitChallengeBtn").onclick = () => doLifecycle("submit_challenge", [String(id), $("reviewClaim").value.trim(), $("reviewUrl").value.trim()], "Challenge submitted.");
+    $("appealBtn").onclick = () => doLifecycle("submit_appeal", [String(id), $("appealReason").value.trim(), $("appealUrl").value.trim()], "Appeal filed.");
+    $("settleBtn").onclick = () => doLifecycle("settle", [id], "Verdict finalized; claims unlocked.");
+  } else if ($("claimBtn")) $("claimBtn").onclick = () => doLifecycle("claim_winnings", [id], "Bond claim paid.");
 }
 
 function openDrawer() { $("scrim").classList.add("on"); $("drawer").classList.add("on"); }
@@ -127,6 +141,11 @@ async function doAdjudicate(id) {
   const btn = $("adjBtn"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> reading evidence';
   try { await ensureWallet(); toast("Validators are reading the evidence and converging…", "", "adjudicate"); await write(CONTRACT, "adjudicate", [id]); toast("Verdict recorded on-chain. Pot settled.", "ok", "ruled"); await load(); }
   catch (e) { toast(fmtErr(e), "err", "failed"); if (btn) { btn.disabled = false; btn.textContent = "Adjudicate from evidence"; } }
+}
+
+async function doLifecycle(method, args, success) {
+  try { await ensureWallet(); await write(CONTRACT, method, args); toast(success, "ok", "on-chain"); await load(); }
+  catch (e) { toast(fmtErr(e), "err", "failed"); }
 }
 
 if (window.gsap) {

@@ -158,9 +158,10 @@ class Sentinel(gl.Contract):
     recent_ids: DynArray[str]
     claim_standard: str
     clock: u256
+    admin: str
 
     def __init__(self) -> None:
-        pass
+        self.admin = gl.message.sender_address.as_hex
 
     def _idx_add(self, m: TreeMap[str, str], key: str, value: str) -> None:
         arr = []
@@ -194,6 +195,46 @@ class Sentinel(gl.Contract):
 
     def _set_status(self, a: dict, new_status: str) -> None:
         a["status"] = new_status
+
+    def _require_admin(self, actor: str) -> None:
+        if self.admin.lower() != actor.lower():
+            raise Exception("only_admin")
+
+    def _require_case_editor(self, a: dict, actor: str) -> None:
+        owner = str(a.get("opener", a.get("holder", ""))).lower()
+        if actor.lower() != owner and actor.lower() != self.admin.lower():
+            raise Exception("only_case_owner_or_admin")
+
+    def _has_open_challenge(self, a: dict) -> bool:
+        for cid in a.get("challengeIds", []):
+            if json.loads(self.challenges[int(cid)]).get("status") == "open":
+                return True
+        return False
+
+    def _has_open_appeal(self, a: dict) -> bool:
+        for aid in a.get("appealIds", []):
+            if json.loads(self.appeals[int(aid)]).get("status") == "open":
+                return True
+        return False
+
+    def _revise_outcome(self, a: dict, full: bool) -> None:
+        if not full:
+            a["outcome"] = "unclear"
+            a["outcomeSide"] = -1
+            a["refundMode"] = 1
+        elif a.get("outcome") == "met":
+            a["outcome"] = "not_met"
+            a["outcomeSide"] = 0
+            a["refundMode"] = 0
+        elif a.get("outcome") == "not_met":
+            a["outcome"] = "met"
+            a["outcomeSide"] = 1
+            a["refundMode"] = 0
+        else:
+            a["outcome"] = "unclear"
+            a["outcomeSide"] = -1
+            a["refundMode"] = 1
+        a["payoutState"] = "locked"
 
     def _add_audit(self, a: dict, actor: str, action: str, note: str, before: str, after: str) -> str:
         audit_id = str(len(self.audits))
@@ -282,6 +323,7 @@ class Sentinel(gl.Contract):
     @gl.public.write
     def set_claim_standard(self, standard: str) -> str:
         self.clock += 1
+        self._require_admin(gl.message.sender_address.as_hex)
         text = _s(standard, 1600)
         if text == "":
             raise Exception("empty_standard")
@@ -301,7 +343,8 @@ class Sentinel(gl.Contract):
              "holder": opener, "insurer": opener, "statement": stmt, "source_url": clean,
              "evidence_url": clean, "description": stmt, "trigger_condition": stmt,
              "trigger_url": clean, "bond": "0", "yes_pool": "0", "no_pool": "0", "status": "OPEN", "outcome": "pending",
-             "outcomeSide": 0, "category": "truth-market",
+             "outcomeSide": 0, "category": "truth-market", "stakingClosed": 0,
+             "maturesAt": str(int(self.clock) + 1), "refundMode": 0, "payoutState": "locked",
              "confidenceBps": 0, "triggerBps": 0, "summary": "", "rationale": "",
              "riskFlags": [], "obligationIds": [], "evidenceIds": [], "reviewIds": [],
              "challengeIds": [], "appealIds": [], "auditIds": [], "createdAt": str(int(self.clock))}
@@ -328,7 +371,8 @@ class Sentinel(gl.Contract):
              "holder": actor, "insurer": actor, "statement": stmt, "source_url": clean,
              "evidence_url": clean, "description": stmt, "trigger_condition": stmt,
              "trigger_url": clean, "bond": str(bond), "yes_pool": str(bond), "no_pool": "0",
-             "status": "OPEN", "outcome": "pending", "outcomeSide": 0, "category": "sentinel-dossier",
+             "status": "OPEN", "outcome": "pending", "outcomeSide": 0, "category": "sentinel-dossier", "stakingClosed": 0,
+             "maturesAt": str(int(self.clock) + 1), "refundMode": 0, "payoutState": "locked",
              "confidenceBps": 0, "triggerBps": 0, "summary": "", "rationale": "",
              "riskFlags": [], "obligationIds": [], "evidenceIds": [], "reviewIds": [],
              "challengeIds": [], "appealIds": [], "auditIds": [], "createdAt": str(int(self.clock))}
@@ -436,7 +480,7 @@ class Sentinel(gl.Contract):
         self.clock += 1
         actor = gl.message.sender_address.as_hex
         a = self._load_claim(str(claim_id))
-        if a["status"] not in ("OPEN", "REVIEWING", "REVIEWED", "CHALLENGE_WINDOW", "APPEALED"):
+        if a["status"] != "OPEN" or int(a.get("stakingClosed", 0)) == 1:
             raise Exception("market_closed")
         if side != 0 and side != 1:
             raise Exception("bad_side")
@@ -459,7 +503,7 @@ class Sentinel(gl.Contract):
         self.clock += 1
         actor = gl.message.sender_address.as_hex
         a = self._load_claim(str(claim_id))
-        if a["status"] not in ("OPEN", "REVIEWING", "REVIEWED", "CHALLENGE_WINDOW", "APPEALED"):
+        if a["status"] != "OPEN" or int(a.get("stakingClosed", 0)) == 1:
             raise Exception("case_closed")
         amount = gl.message.value
         if amount == u256(0):
@@ -571,6 +615,7 @@ class Sentinel(gl.Contract):
         self.clock += 1
         actor = gl.message.sender_address.as_hex
         a = self._load_claim(claim_id)
+        self._require_case_editor(a, actor)
         if a["status"] not in ("OPEN", "ACTIVE", "CLAIMED", "REVIEWING", "REVIEWED", "CHALLENGE_WINDOW"):
             raise Exception("claim_locked")
         clean = _clean_url(url)
@@ -585,10 +630,30 @@ class Sentinel(gl.Contract):
         return eid
 
     @gl.public.write
+    def close_staking(self, claim_id: str) -> str:
+        self.clock += 1
+        actor = gl.message.sender_address.as_hex
+        a = self._load_claim(claim_id)
+        self._require_case_editor(a, actor)
+        if a["status"] != "OPEN" or int(a.get("stakingClosed", 0)) == 1:
+            raise Exception("staking_already_closed")
+        if int(self.clock) < int(a.get("maturesAt", "0")):
+            raise Exception("case_not_mature")
+        a["stakingClosed"] = 1
+        before = a["status"]
+        self._set_status(a, "REVIEWING")
+        self._add_audit(a, actor, "close_staking", "Counter-bond window closed; case matured for review.", before, "REVIEWING")
+        self._store_claim(a)
+        return "REVIEWING"
+
+    @gl.public.write
     def open_review(self, claim_id: str) -> str:
         self.clock += 1
         actor = gl.message.sender_address.as_hex
         a = self._load_claim(claim_id)
+        self._require_case_editor(a, actor)
+        if a.get("category") in ("truth-market", "sentinel-dossier") and int(a.get("stakingClosed", 0)) != 1:
+            raise Exception("staking_must_close_before_review")
         if a["status"] not in ("OPEN", "ACTIVE", "CLAIMED", "REVIEWED"):
             raise Exception("invalid_transition")
         before = a["status"]
@@ -602,6 +667,8 @@ class Sentinel(gl.Contract):
         self.clock += 1
         actor = gl.message.sender_address.as_hex
         a = self._load_claim(claim_id)
+        if a.get("category") in ("truth-market", "sentinel-dossier") and int(a.get("stakingClosed", 0)) != 1:
+            raise Exception("staking_must_close_before_review")
         if a["status"] not in ("OPEN", "ACTIVE", "CLAIMED", "REVIEWING", "REVIEWED"):
             raise Exception("invalid_transition")
         if a["status"] != "REVIEWING":
@@ -643,20 +710,34 @@ class Sentinel(gl.Contract):
         a = self._load_claim(str(claim_id))
         if a["status"] in ("RESOLVED", "ARCHIVED"):
             raise Exception("claim_already_closed")
-        if a["outcome"] == "pending" or a["status"] == "OPEN":
-            self.review_claim_with_genlayer(str(claim_id))
-            a = self._load_claim(str(claim_id))
+        if a["status"] != "CHALLENGE_WINDOW" or a["outcome"] == "pending" or int(a.get("challengeWindowOpened", 0)) != 1:
+            raise Exception("review_must_finish_before_settlement")
+        if a.get("category") in ("truth-market", "sentinel-dossier") and int(a.get("stakingClosed", 0)) != 1:
+            raise Exception("case_not_mature")
+        if self._has_open_challenge(a) or self._has_open_appeal(a):
+            raise Exception("open_dispute_blocks_settlement")
         before = a["status"]
-        if a["outcome"] == "met":
+        yes_pool = int(a.get("yes_pool", "0"))
+        no_pool = int(a.get("no_pool", "0"))
+        if a["outcome"] == "unclear" or (a["outcome"] == "met" and yes_pool == 0) or (a["outcome"] == "not_met" and no_pool == 0):
+            a["outcome"] = "unclear"
+            a["outcomeSide"] = -1
+            a["refundMode"] = 1
+            self._set_status(a, "RESOLVED")
+            self._add_audit(a, actor, "resolve", "Neutral refund: unclear verdict or no bonded winner.", before, "RESOLVED")
+        elif a["outcome"] == "met":
             a["outcomeSide"] = 1
+            a["refundMode"] = 0
             self._set_status(a, "RESOLVED")
             self._rep_bump(a["opener"], 95, "claimsPaid")
             self._add_audit(a, actor, "resolve", "Claim resolved TRUE; YES stakers can claim winnings.", before, "RESOLVED")
         else:
             a["outcomeSide"] = 0
+            a["refundMode"] = 0
             self._set_status(a, "RESOLVED")
             self._rep_bump(a["opener"], 40, "claimsClosed")
             self._add_audit(a, actor, "resolve", "Claim resolved FALSE; NO stakers can claim winnings.", before, "RESOLVED")
+        a["payoutState"] = "claimable"
         self._store_claim(a)
 
     @gl.public.write
@@ -674,19 +755,23 @@ class Sentinel(gl.Contract):
         a = self._load_claim(str(claim_id))
         if a["status"] not in ("RESOLVED", "ARCHIVED"):
             raise Exception("market_not_resolved")
+        if a.get("payoutState", "locked") != "claimable":
+            raise Exception("payout_not_claimable")
         outcome = int(a.get("outcomeSide", 0))
+        refund_mode = int(a.get("refundMode", 0)) == 1
         win_pool = int(a.get("yes_pool", "0")) if outcome == 1 else int(a.get("no_pool", "0"))
         lose_pool = int(a.get("no_pool", "0")) if outcome == 1 else int(a.get("yes_pool", "0"))
-        if win_pool <= 0:
+        if not refund_mode and win_pool <= 0:
             raise Exception("no_winning_pool")
         owed = 0
         i = 0
         while i < len(self.stakes):
             try:
                 st = json.loads(self.stakes[i])
-                if st.get("claimId") == str(claim_id) and st.get("staker", "").lower() == actor.lower() and int(st.get("side", 0)) == outcome and int(st.get("claimed", 0)) == 0:
+                eligible = refund_mode or int(st.get("side", 0)) == outcome
+                if st.get("claimId") == str(claim_id) and st.get("staker", "").lower() == actor.lower() and eligible and int(st.get("claimed", 0)) == 0:
                     amt = int(st.get("amount", "0"))
-                    owed += amt + int(amt * lose_pool / win_pool)
+                    owed += amt if refund_mode else amt + int(amt * lose_pool / win_pool)
                     st["claimed"] = 1
                     self.stakes[i] = json.dumps(st)
             except Exception:
@@ -695,6 +780,15 @@ class Sentinel(gl.Contract):
         if owed <= 0:
             raise Exception("nothing_to_claim")
         self._pay(Address(actor), u256(owed))
+        all_claimed = True
+        j = 0
+        while j < len(self.stakes):
+            row = json.loads(self.stakes[j])
+            if row.get("claimId") == str(claim_id) and int(row.get("claimed", 0)) == 0:
+                all_claimed = False
+            j += 1
+        if all_claimed:
+            a["payoutState"] = "paid"
         self._add_audit(a, actor, "claim_winnings", "Winning market stake claimed.", a["status"], a["status"])
         self._store_claim(a)
 
@@ -720,6 +814,7 @@ class Sentinel(gl.Contract):
         a = self._load_claim(claim_id)
         if a["status"] != "REVIEWED":
             raise Exception("invalid_transition")
+        a["challengeWindowOpened"] = 1
         self._set_status(a, "CHALLENGE_WINDOW")
         self._add_audit(a, actor, "open_challenge_window", "Challenge window opened.", "REVIEWED", "CHALLENGE_WINDOW")
         self._store_claim(a)
@@ -771,6 +866,8 @@ class Sentinel(gl.Contract):
         a["confidenceBps"] = max(0, min(10000, int(a["confidenceBps"]) + int(res["confidenceDeltaBps"])))
         if res["ruling"] in ("accepted", "partially_accepted"):
             self._rep_bump(ch["challenger"], 50, "successfulChallenges")
+            self._revise_outcome(a, res["ruling"] == "accepted")
+            a["summary"] = "Verdict revised after challenge: " + res["reason"][:220]
         elif res["ruling"] == "rejected":
             self._rep_bump(ch["challenger"], -25, "failedChallenges")
         self._add_audit(a, actor, "resolve_challenge_with_genlayer", res["reason"], "CHALLENGE_WINDOW", "CHALLENGE_WINDOW")
@@ -825,6 +922,8 @@ class Sentinel(gl.Contract):
         a["confidenceBps"] = max(0, min(10000, int(a["confidenceBps"]) + int(res["confidenceDeltaBps"])))
         if res["ruling"] in ("granted", "partially_granted"):
             self._rep_bump(ap["appellant"], 45, "appealsGranted")
+            self._revise_outcome(a, res["ruling"] == "granted")
+            a["summary"] = "Verdict revised after appeal: " + res["reason"][:220]
         before = a["status"]
         self._set_status(a, "CHALLENGE_WINDOW")
         self._add_audit(a, actor, "resolve_appeal_with_genlayer", res["reason"], before, "CHALLENGE_WINDOW")
@@ -895,7 +994,7 @@ class Sentinel(gl.Contract):
                 "status": status,
                 "verdict": verdict,
                 "rationale": a.get("rationale", a.get("summary", "")),
-                "paid": a.get("status") in ("RESOLVED", "ARCHIVED")}
+                "paid": a.get("payoutState") == "paid"}
 
     @gl.public.view
     def get_item_count(self) -> int:

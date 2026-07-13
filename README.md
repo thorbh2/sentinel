@@ -10,9 +10,13 @@ This repository is a public proof package: it includes the product UI, the deplo
 | --- | --- |
 | App | https://sentinel-five-xi.vercel.app |
 | GitHub | https://github.com/thorbh2/sentinel |
-| Contract | https://explorer-studio.genlayer.com/contracts/0xFDF377cB5Fb982B4D3f908FB8D3D9dA7aD529032 |
-| Deploy tx | https://explorer-studio.genlayer.com/tx/0xfccf5be1d316a0df4794a000e677a84c98b042ff6355bd4218e86ae7ca25357f |
-| Vercel inspect | https://vercel.com/aspros-projects-07dbbeb8/sentinel/6dZ52dyNEt4EHLHYU1MgCbjUvY4v |
+| Contract | https://explorer-studio.genlayer.com/contracts/0xc709086369FB93e47b602a585fd67aF82f4120B4 |
+| Deploy tx | https://explorer-studio.genlayer.com/tx/0x3926da2b7ba4d1775e980837034f047f294b161cc6fe996a73079b9653f27e8f |
+| Vercel inspect | https://vercel.com/aspros-projects-07dbbeb8/sentinel/3K8gieGU5ANj44xiEVhGJhgCuKDD |
+
+## Review Fixes
+
+Sentinel now assigns rule changes to the protocol administrator and evidence changes to the claim owner or administrator. Counter-bonding closes explicitly before review, unresolved challenges and appeals stop settlement, and a successful review can replace the provisional verdict. Neutral outcomes refund the bonded positions instead of selecting a side by default. `tests/test_v2_invariants.py` checks permissions, maturity, review blocking, verdict revision and payout state.
 
 ## Why Sentinel Exists
 
@@ -31,7 +35,7 @@ The frontend keeps the original product experience, while the contract adds a re
 | Read methods | 22 |
 | GenLayer features | live web rendering, LLM execution, validator-comparative consensus |
 | Deployment wallet | 0x393F435b0B6B9784a35686Ad089A856aFB460179 |
-| Contract address | 0xFDF377cB5Fb982B4D3f908FB8D3D9dA7aD529032 |
+| Contract address | 0xc709086369FB93e47b602a585fd67aF82f4120B4 |
 
 Architecture note:
 
